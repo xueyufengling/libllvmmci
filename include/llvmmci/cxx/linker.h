@@ -1,7 +1,7 @@
 #ifndef _LLVMMCI_LINKER
 #define _LLVMMCI_LINKER
 
-#include <llvmmci/llvm_mci.h>
+#include <llvmmci/struct.h>
 
 namespace llvm
 {
@@ -17,18 +17,23 @@ namespace llvmmci
 {
 struct dynamic_linker;
 
-struct dynamic_lib_context
+struct dynamic_lib_target
 {
 	dynamic_linker* linker; //链接该库的动态链接器
 	llvm::orc::JITDylib* lib; //该链接器所链接的库
 
-	dynamic_lib_context(dynamic_linker* linker, const char* lib_name);
-	~dynamic_lib_context();
+	dynamic_lib_target(dynamic_linker* linker, const char* lib_name);
+	~dynamic_lib_target();
 
 	/**
 	 * @brief 添加.o文件
 	 */
-	void add_o(array* o);
+	void add_o(void* o, size_t len);
+
+	inline void add_o(array* o)
+	{
+		add_o(o->data, o->length);
+	}
 
 	/**
 	 * @brief 查找符号
@@ -58,9 +63,14 @@ struct dynamic_linker
 	 */
 	void rm_jit_dylib(llvm::orc::JITDylib* lib) const;
 
-	dynamic_lib_context* link_target(const char* lib_name);
+	dynamic_lib_target* link_target(const char* lib_name);
 
-	void add_o(llvm::orc::JITDylib* lib, array* o);
+	void add_o(llvm::orc::JITDylib* lib, void* o, size_t len);
+
+	inline void add_o(llvm::orc::JITDylib* lib, array* o)
+	{
+		add_o(lib, o->data, o->length);
+	}
 
 	/**
 	 * @brief 查找符号，lib必须是本linker所创建的，否则无法找到符号

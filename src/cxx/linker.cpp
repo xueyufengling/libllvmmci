@@ -1,4 +1,4 @@
-#include <llvmmci/linker.h>
+#include <llvmmci/cxx/linker.h>
 
 #include <llvm/ExecutionEngine/Orc/SelfExecutorProcessControl.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
@@ -7,14 +7,16 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/TargetSelect.h>
 
+#include <llvmmci/cxx/mem.h>
+
 llvmmci::dynamic_linker* llvmmci::global_dynamic_linker = new llvmmci::dynamic_linker();
 
-llvmmci::dynamic_lib_context::dynamic_lib_context(llvmmci::dynamic_linker* linker, const char* lib_name) :
+llvmmci::dynamic_lib_target::dynamic_lib_target(llvmmci::dynamic_linker* linker, const char* lib_name) :
 		linker(linker), lib(linker->jit_dylib(lib_name))
 {
 }
 
-llvmmci::dynamic_lib_context::~dynamic_lib_context()
+llvmmci::dynamic_lib_target::~dynamic_lib_target()
 {
 	linker->rm_jit_dylib(lib);
 }
@@ -66,23 +68,23 @@ void llvmmci::dynamic_linker::rm_jit_dylib(llvm::orc::JITDylib* lib) const
 	}
 }
 
-llvmmci::dynamic_lib_context* llvmmci::dynamic_linker::link_target(const char* lib_name)
+llvmmci::dynamic_lib_target* llvmmci::dynamic_linker::link_target(const char* lib_name)
 {
-	return new llvmmci::dynamic_lib_context(this, lib_name);
+	return new llvmmci::dynamic_lib_target(this, lib_name);
 }
 
-void llvmmci::dynamic_linker::add_o(llvm::orc::JITDylib* lib, array* o)
+void llvmmci::dynamic_linker::add_o(llvm::orc::JITDylib* lib, void* o, size_t len)
 {
 	//MemoryBuffer::getMemBuffer()的RequiresNullTerminator参数必须是false，因为这是字节数据而非字符数据，字节数据不以'\0'结尾
-	if(llvm::Error err = o_link_layer->add(*lib, __wrap_array_as_membuffer__(o)))
+	if(llvm::Error err = o_link_layer->add(*lib, llvmmci::as_membuffer(o, len)))
 	{
 		llvm::errs() << "add .o in dynamic linker faield: " << llvm::toString(std::move(err)) << "\n";
 	}
 }
 
-void llvmmci::dynamic_lib_context::add_o(array* o)
+void llvmmci::dynamic_lib_target::add_o(void* o, size_t len)
 {
-	linker->add_o(lib, o);
+	linker->add_o(lib, o, len);
 }
 
 void* llvmmci::dynamic_linker::lookup(llvm::orc::JITDylib* lib, const char* sym_name)
@@ -101,7 +103,7 @@ void* llvmmci::dynamic_linker::lookup(llvm::orc::JITDylib* lib, const char* sym_
 	}
 }
 
-void* llvmmci::dynamic_lib_context::lookup(const char* sym_name)
+void* llvmmci::dynamic_lib_target::lookup(const char* sym_name)
 {
 	return linker->lookup(lib, sym_name);
 }
