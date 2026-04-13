@@ -153,7 +153,7 @@ llvm::MCTargetAsmParser* llvmmci::architecture_context::new_target_asm_parser(ll
 	return target_arch->createMCAsmParser(*subtarget_info, *parser, *inst_info, *options);
 }
 
-llvm::object::ObjectFile* llvmmci::architecture_context::object_file_from(void* o, size_t len)
+llvm::object::ObjectFile* llvmmci::architecture_context::object_file_from(const void* o, size_t len)
 {
 	auto obj = llvm::object::ObjectFile::createObjectFile(as_membuffer(o, len)->getMemBufferRef());
 	if(!obj)
@@ -174,6 +174,67 @@ llvm::MCInstPrinter* llvmmci::architecture_context::new_inst_printer(assembly_sy
 	return target_arch->createMCInstPrinter(*triple, dialect, *asm_info, *inst_info, *reg_info);
 }
 
+llvmmci::obj_file::obj_file(architecture_context* as_ctx, const void* o, size_t len) :
+		obj(as_ctx->object_file_from(o, len))
+{
+}
+
+llvmmci::obj_file::~obj_file()
+{
+	delete obj;
+}
+
+std::vector<llvm::object::SectionRef> llvmmci::obj_file::sections()
+{
+	std::vector<llvm::object::SectionRef> secs;
+	for(const llvm::object::SectionRef& sec : obj->sections())
+	{
+		secs.push_back(sec);
+	}
+	return secs;
+}
+
+void llvmmci::obj_file::parse_sec_addr_symbols(llvm::object::ObjectFile* obj, const char* sec_name, std::unordered_map<uint64_t, obj_symbol>& sec_symbols)
+{
+	for(const llvm::object::SymbolRef& sym : obj->symbols())
+	{
+		auto sec = sym.getSection();
+		if(!sec || *sec == obj->section_end())
+		{
+			continue;	//符号没有段或不在有效的段内则直接返回
+		}
+		auto sym_sec_name = (*sec)->getName();	//获取符号段名
+		if(sym_sec_name)
+		{
+			const char* sym_sec = (*sym_sec_name).data();
+			if(!strcmp(sym_sec, sec_name))
+			{
+				//先获取符号地址，只有有地址的符号才收集
+				//该地址实际上是段内偏移量
+				auto addr = sym.getAddress();
+				if(!addr)
+					continue;
+				uint64_t sym_addr = *addr;
+				llvmmci::obj_symbol& obj_sym = sec_symbols[sym_addr];
+				obj_sym.sec = sec_name;
+				obj_sym.sec_offset = sym_addr;
+				auto type = sym.getType();
+				if(type)
+					obj_sym.type = (llvmmci::symbol_type)*type;
+				auto name = sym.getName();
+				if(name)
+					obj_sym.name = (*name).data();
+				auto value = sym.getValue();
+				if(value)
+					obj_sym.value = *value;
+				auto flags = sym.getFlags();
+				if(flags)
+					obj_sym.flags = *flags;
+			}
+		}
+	}
+}
+
 llvmmci::disassembler::disassembler(architecture_context* as_ctx, assembly_syntax syntax) :
 		as_ctx(as_ctx), ctx(as_ctx->new_context(nullptr)), dis_asm(as_ctx->new_disassembler(ctx)), inst_printer(as_ctx->new_inst_printer(syntax))
 {
@@ -185,25 +246,117 @@ llvmmci::disassembler::~disassembler()
 	delete dis_asm;
 }
 
-array* llvmmci::disassembler::disassemble_text(void* text, size_t len)
+bool llvmmci::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t total_size, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols, uint64_t load_base_addr)
 {
-	llvm::SmallString<__OS_PAGE_SIZE__> buf;
-	llvm::raw_svector_ostream asm_out(buf);
+	size_t offset = 0;	//相对于img_text_base的偏移量，即段内偏移量
+	/**
+	 * offset仅仅是当前img_base中的偏移量，img_base不一定是运行时加载的库的基址，它也能是从文件系统读取so库的内容基地址
+	 * 而load_base_addr是运行时加载目标so库的实际基地址。
+	 * 如果img_base刚好是运行时加载的库指针，那么img_base与load_base_addr就相等。
+	 * 如果img_base是从文件读取的，那么load_base_addr就必须是运行时加载的库指针。
+	 * load_base_addr关系到寻址的计算，即一些汇编指令是位置相关的，必须在指定的地址加载才能正确工作。
+	 */
 	llvm::MCInst inst;	//当前解析的指令
-	size_t offset = 0;	//当前的偏移量
-	while(offset < len)
+	while(offset < total_size)
 	{
 		uint64_t inst_len;
-		llvm::ArrayRef<uint8_t> inst_buf((uint8_t*)text + offset, len - offset);	//未解析的指令缓冲
-		if(dis_asm->getInstruction(inst, inst_len, inst_buf, offset, llvm::nulls()) == llvm::MCDisassembler::Success)	//取未解析的第一条指令
+		llvm::ArrayRef<uint8_t> inst_buf((uint8_t*)img_text_base + offset, total_size - offset);	//当前未解析的指令缓冲
+		//传入getInstruction()的ArrayRef<>必须第一个字节就是待解析的指令，后面的load_base_addr + offset是用于汇编解析而非指令数据读取的
+		uint64_t inst_addr = load_base_addr + offset;
+		if(dis_asm->getInstruction(inst, inst_len, inst_buf, inst_addr, llvm::nulls()) == llvm::MCDisassembler::Success)	//取未解析的第一条指令
 		{
-			inst_printer->printInst(&inst, offset, "", *as_ctx->subtarget_info, asm_out);	//打印指令
-			asm_out << '\n';
+			if(sec_symbols)	//如果有符号信息则先打印符号
+			{
+				const llvmmci::obj_symbol& sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
+				if(sym.name)
+				{
+					out << sym.name << ":\n";
+				}
+			}
+			inst_printer->printInst(&inst, inst_addr, "", *as_ctx->subtarget_info, out);	//打印指令
+			out << '\n';
 			offset += inst_len;
 		}
 		else
 		{
-			return nullptr;	//存在无效指令则直接返回空指针
+			return false;	//存在无效指令则直接返回空指针
+		}
+	}
+	return true;
+}
+
+void llvmmci::disassembler::dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align)
+{
+	auto contents = sec.getContents();
+	if(!contents)
+		return;
+	llvm::StringRef contents_buf = *contents;
+	uint64_t addr = sec.getAddress();
+	size_t offset = 0;
+	size_t total_size = contents_buf.size();
+	while(offset < total_size)
+	{
+		out << llvm::format_hex(addr + offset, 8) << ":\t";	//.data段的地址宽8字符
+		for(size_t idx = 0; idx < data_align; ++idx)
+		{
+			size_t data_addr = offset + idx;
+			if(data_addr < total_size)
+				out << llvm::format_hex((uint8_t)contents_buf[data_addr], 2) << " ";	//按照一行data_align个字节输出.data段数据
+			else
+				return;
+		}
+		out << "\n";
+		offset += data_align;
+	}
+}
+
+bool llvmmci::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols)
+{
+	auto contents = sec.getContents();
+	if(!contents)
+		return true;
+	llvm::StringRef contents_buf = *contents;
+	//SectionRef.getContents().data()获取到的指针始终是该段的基址
+	return disasm_text(out, contents_buf.data(), contents_buf.size(), sec_symbols, sec.getAddress());
+}
+
+array* llvmmci::disassembler::disassemble_text(const void* text, size_t len)
+{
+	llvm::SmallString<__OS_PAGE_SIZE__> buf;
+	llvm::raw_svector_ostream asm_out(buf);
+	if(!disasm_text(asm_out, text, len))
+		return nullptr;
+	array* asm_src = llvmmci::array_from_ostream(asm_out, 0, 1);
+	asm_src->data[asm_src->length - 1] = '\0';
+	return asm_src;
+}
+
+array* llvmmci::disassembler::disassemble_o(const void* o, size_t len, size_t data_align)
+{
+	llvmmci::obj_file obj(as_ctx, o, len);
+	if(!obj)
+	{
+		return nullptr;
+	}
+	std::unordered_map<uint64_t, llvmmci::obj_symbol> symbols;
+	obj.parse_sec_addr_symbols(".text", symbols);	//收集所有有地址的符号，用于在对应地址处打印符号名称
+	llvm::SmallString<__OS_PAGE_SIZE__> buf;
+	llvm::raw_svector_ostream asm_out(buf);
+	for(const llvm::object::SectionRef sec : obj.sections())
+	{
+		asm_out << *(sec.getName()) << ":\n";	//section名称，以'.'开头
+		if(sec.isText())
+		{
+			if(!disasm_text_sec(asm_out, sec, &symbols))
+				return nullptr;
+		}
+		else if(sec.isData())
+		{
+			dump_data_sec_hex(asm_out, sec, data_align);
+		}
+		else
+		{
+			dump_data_sec_hex(asm_out, sec, data_align);
 		}
 	}
 	array* asm_src = llvmmci::array_from_ostream(asm_out, 0, 1);

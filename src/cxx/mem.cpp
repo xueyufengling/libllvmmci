@@ -5,7 +5,7 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
 
-std::unique_ptr<llvm::MemoryBuffer> llvmmci::as_membuffer(void* buf, size_t len)
+std::unique_ptr<llvm::MemoryBuffer> llvmmci::as_membuffer(const void* buf, size_t len)
 {
 	return llvm::MemoryBuffer::getMemBuffer(llvm::StringRef((const char*)buf, len), "", false);
 }

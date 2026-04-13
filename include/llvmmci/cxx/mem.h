@@ -13,7 +13,7 @@ class raw_svector_ostream;
 
 namespace llvmmci
 {
-extern std::unique_ptr<llvm::MemoryBuffer> as_membuffer(void* buf, size_t len);
+extern std::unique_ptr<llvm::MemoryBuffer> as_membuffer(const void* buf, size_t len);
 
 /**
  * @brief 将array内存包装成LLVM的MemoryBuffer

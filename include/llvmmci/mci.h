@@ -31,9 +31,9 @@ __declspec(dllexport) extern disassembler* create_new_disassembler(architecture_
 
 __declspec(dllexport) extern disassembler* host_att_disassembler();
 
-__declspec(dllexport) extern array* disassemble_text(disassembler* disassembler, void* text, size_t len);
+__declspec(dllexport) extern array* disassemble_text(disassembler* disassembler, const void* text, size_t len);
 
-__declspec(dllexport) extern array* disassemble_o(disassembler* disassembler, array* o);
+__declspec(dllexport) extern array* disassemble_o(disassembler* disassembler, const array* o, size_t data_align);
 
 struct dynamic_linker;
 struct dynamic_lib_target;

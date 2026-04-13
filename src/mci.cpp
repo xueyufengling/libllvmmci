@@ -63,7 +63,12 @@ disassembler* host_att_disassembler()
 	return (disassembler*)llvmmci::host_att_disassembler;
 }
 
-array* disassemble_text(disassembler* disassembler, void* text, size_t len)
+array* disassemble_text(disassembler* disassembler, const void* text, size_t len)
 {
 	return ((llvmmci::disassembler*)disassembler)->disassemble_text(text, len);
+}
+
+array* disassemble_o(disassembler* disassembler, const array* o, size_t data_align)
+{
+	return ((llvmmci::disassembler*)disassembler)->disassemble_o(o->data, o->length, data_align);
 }

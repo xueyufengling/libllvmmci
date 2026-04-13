@@ -3,8 +3,12 @@
 
 #include <llvmmci/struct.h>
 
+#include <unordered_map>
+#include <vector>
+
 namespace llvm
 {
+class raw_ostream;
 //架构信息
 class Triple;
 class Target;
@@ -30,9 +34,11 @@ class MCStreamer;
 namespace object
 {
 class ObjectFile;
+class SectionRef;
 }
 class MCDisassembler;
 class MCInstPrinter;
+
 }
 
 namespace llvmmci
@@ -83,7 +89,7 @@ struct architecture_context
 	llvm::MCTargetAsmParser* new_target_asm_parser(llvm::MCAsmParser* parser);
 
 	//反汇编
-	llvm::object::ObjectFile* object_file_from(void* o, size_t len);
+	llvm::object::ObjectFile* object_file_from(const void* o, size_t len);
 
 	inline llvm::object::ObjectFile* object_file_from(array* o)
 	{
@@ -116,6 +122,82 @@ struct assembler
 	array* assemble(bool PIC = true, bool LargeCodeModel = false, assembly_syntax syntax = assembly_syntax::ASM_SYNTAX_ATT);
 };
 
+enum symbol_flag : unsigned
+{
+	SF_None = 0,
+	SF_Undefined = 1U << 0,      // Symbol is defined in another object file
+	SF_Global = 1U << 1,         // Global symbol
+	SF_Weak = 1U << 2,           // Weak symbol
+	SF_Absolute = 1U << 3,       // Absolute symbol
+	SF_Common = 1U << 4,         // Symbol has common linkage
+	SF_Indirect = 1U << 5,       // Symbol is an alias to another symbol
+	SF_Exported = 1U << 6,       // Symbol is visible to other DSOs
+	SF_FormatSpecific = 1U << 7, // Specific to the object file format
+								 // (e.g. section symbols)
+	SF_Thumb = 1U << 8,          // Thumb symbol in a 32-bit ARM binary
+	SF_Hidden = 1U << 9,         // Symbol has hidden visibility
+	SF_Const = 1U << 10,         // Symbol value is constant
+	SF_Executable = 1U << 11,    // Symbol points to an executable section
+								  // (IR only)
+};
+
+enum symbol_type
+{
+	ST_Unknown, // Type not specified
+	ST_Other,
+	ST_Data,
+	ST_Debug,
+	ST_File,
+	ST_Function,
+};
+
+struct obj_symbol
+{
+	const char* name = nullptr;
+	const char* sec = nullptr; //所属的段
+	uint64_t sec_offset = 0; //段内偏移量
+	uint64_t value = 0;
+	symbol_type type = symbol_type::ST_Unknown;
+	uint64_t flags = symbol_flag::SF_None;
+};
+
+/**
+ * @brief .o文件
+ */
+struct obj_file
+{
+	llvm::object::ObjectFile* obj;
+
+	inline obj_file(architecture_context* as_ctx, const array* o) :
+			obj_file(as_ctx, o->data, o->length)
+	{
+	}
+
+	obj_file(architecture_context* as_ctx, const void* o, size_t len);
+
+	~obj_file();
+
+	inline operator bool()
+	{
+		return obj;
+	}
+
+	/**
+	 * @brief 获取所有段
+	 */
+	std::vector<llvm::object::SectionRef> sections();
+
+	/**
+	 * @brief 解析指定段有地址的符号
+	 */
+	static void parse_sec_addr_symbols(llvm::object::ObjectFile* obj, const char* sec_name, std::unordered_map<uint64_t, obj_symbol>& sec_symbols);
+
+	inline void parse_sec_addr_symbols(const char* sec_name, std::unordered_map<uint64_t, obj_symbol>& sec_symbols)
+	{
+		parse_sec_addr_symbols(obj, sec_name, sec_symbols);
+	}
+};
+
 struct disassembler
 {
 	architecture_context* as_ctx;
@@ -127,7 +209,16 @@ struct disassembler
 
 	~disassembler();
 
-	array* disassemble_text(void* text, size_t len);
+	array* disassemble_text(const void* text, size_t len);
+
+	array* disassemble_o(const void* o, size_t len, size_t data_align = 16);
+
+protected:
+	bool disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t total_size, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr, uint64_t load_base_addr = 0);
+
+	void dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align);
+
+	bool disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr);
 };
 
 extern disassembler* host_att_disassembler;
