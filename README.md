@@ -2,4 +2,4 @@
 
 # libllvmmci
 
-    libllvmmci provides interfaces for compiling, assembling, linking, and loading in memory based on LLVM, with llvm_mci.h exporting C interfaces that can be called externally.
+    libllvmmci provides interfaces for compiling, assembling, disassembling, linking, and loading in memory based on LLVM, with mci.h exporting C interfaces that can be called externally.

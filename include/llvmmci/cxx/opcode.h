@@ -110,17 +110,33 @@ extern architecture_context* host_architecture_context;
 struct assembler
 {
 	architecture_context* as_ctx;
-	llvm::SourceMgr* src_ctx; //汇编指令源码缓冲区
-	llvm::MCContext* ctx; //不同单元的上下文不能复用
+	bool ignore_err = false; //遇到汇编错误时是否忽略错误尝试继续汇编下一条指令
+	const char* swift_refl_seg_name = nullptr; //Swift5的反射段名称
+	llvm::SourceMgr* src_ctx = nullptr; //汇编指令源码缓冲区
+	llvm::MCContext* ctx = nullptr; //不同单元的上下文不能复用
 
-	assembler(architecture_context* as_ctx, bool DoAutoReset = true, const char* Swift5ReflSegmentName = nullptr);
+	assembler(architecture_context* as_ctx);
 
 	~assembler();
 
+	/**
+	 * @brief 为当前汇编单元添加源码
+	 */
 	void add_src(const char* src);
 
+	/**
+	 * @brief 编译当前汇编单元，编译完成后不清除源码，需要使用clear_uint()手动清除
+	 * @param PIC Position-independent code，即是否生成位置无关代码
+	 */
 	array* assemble(bool PIC = true, bool LargeCodeModel = false, assembly_syntax syntax = assembly_syntax::ASM_SYNTAX_ATT);
+
+	/**
+	 * @brief 清除当前汇编单元并新建汇编单元
+	 */
+	void new_uint();
 };
+
+extern assembler* host_assembler;
 
 enum symbol_flag : unsigned
 {
@@ -221,7 +237,7 @@ protected:
 	bool disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr);
 };
 
-extern disassembler* host_att_disassembler;
+extern disassembler* host_disassembler;
 
 }
 

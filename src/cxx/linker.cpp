@@ -8,8 +8,14 @@
 #include <llvm/Support/TargetSelect.h>
 
 #include <llvmmci/cxx/mem.h>
+#include <llvmmci/cxx/init_order.h>
 
-llvmmci::dynamic_linker* llvmmci::global_dynamic_linker = new llvmmci::dynamic_linker();
+llvmmci::dynamic_linker* llvmmci::global_dynamic_linker = nullptr;
+
+__init_module__(linker)
+{
+	llvmmci::global_dynamic_linker = new llvmmci::dynamic_linker();
+}
 
 llvmmci::dynamic_lib_target::dynamic_lib_target(llvmmci::dynamic_linker* linker, const char* lib_name) :
 		linker(linker), lib(linker->jit_dylib(lib_name))

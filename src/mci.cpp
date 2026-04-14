@@ -3,34 +3,44 @@
 #include <llvmmci/cxx/opcode.h>
 #include <llvmmci/cxx/linker.h>
 
-architecture_context* host_architecture_context()
+#include <llvmmci/cxx/init_order.h>
+
+architecture_context* host_architecture_context = nullptr;
+thread_local assembler* host_assembler = nullptr;
+disassembler* host_disassembler = nullptr;
+dynamic_linker* global_dynamic_linker = nullptr;
+
+__init_module__(export)
 {
-	return (architecture_context*)llvmmci::host_architecture_context;
+	host_architecture_context = (architecture_context*)llvmmci::host_architecture_context;
+	host_assembler = (assembler*)llvmmci::host_assembler;
+	host_disassembler = (disassembler*)llvmmci::host_disassembler;
+	global_dynamic_linker = (dynamic_linker*)llvmmci::global_dynamic_linker;
 }
 
-assembler* create_new_assembler(architecture_context* as_ctx, bool DoAutoReset, const char* Swift5ReflSegmentName)
+assembler* create_new_assembler(architecture_context* as_ctx)
 {
-	return (assembler*)new llvmmci::assembler((llvmmci::architecture_context*)as_ctx, DoAutoReset, Swift5ReflSegmentName);
+	return (assembler*)new llvmmci::assembler((llvmmci::architecture_context*)as_ctx);
 }
 
-void assembler_add_src(assembler* unit, const char* src)
+void assembler_add_src(assembler* assembler, const char* src)
 {
-	((llvmmci::assembler*)unit)->add_src(src);
+	((llvmmci::assembler*)assembler)->add_src(src);
 }
 
-array* assemble_unit(assembler* unit, bool PIC, bool LargeCodeModel, unsigned syntax)
+array* assemble_unit(assembler* assembler, bool PIC, bool LargeCodeModel, unsigned syntax)
 {
-	return ((llvmmci::assembler*)unit)->assemble(PIC, LargeCodeModel, (llvmmci::assembly_syntax)syntax);
+	return ((llvmmci::assembler*)assembler)->assemble(PIC, LargeCodeModel, (llvmmci::assembly_syntax)syntax);
 }
 
-void free_assembler(assembler* unit)
+void assembler_clear_unit(assembler* assembler)
 {
-	delete (llvmmci::assembler*)unit;
+	((llvmmci::assembler*)assembler)->new_uint();
 }
 
-dynamic_linker* global_dynamic_linker()
+void free_assembler(assembler* assembler)
 {
-	return (dynamic_linker*)llvmmci::global_dynamic_linker;
+	delete (llvmmci::assembler*)assembler;
 }
 
 dynamic_lib_target* dynamic_link_target(dynamic_linker* linker, const char* lib_name)
@@ -56,11 +66,6 @@ void free_dynamic_lib(dynamic_lib_target* lib_ctx)
 disassembler* create_new_disassembler(architecture_context* as_ctx, unsigned syntax)
 {
 	return (disassembler*)new llvmmci::disassembler((llvmmci::architecture_context*)as_ctx, (llvmmci::assembly_syntax)syntax);
-}
-
-disassembler* host_att_disassembler()
-{
-	return (disassembler*)llvmmci::host_att_disassembler;
 }
 
 array* disassemble_text(disassembler* disassembler, const void* text, size_t len)

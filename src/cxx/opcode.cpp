@@ -25,11 +25,14 @@
 
 #include <llvmmci/cxx/arch.h>
 #include <llvmmci/cxx/mem.h>
+#include <llvmmci/cxx/init_order.h>
 
 llvmmci::architecture_context* llvmmci::host_architecture_context = nullptr;
-llvmmci::disassembler* llvmmci::host_att_disassembler = nullptr;
+llvmmci::assembler* llvmmci::host_assembler = nullptr;
+llvmmci::disassembler* llvmmci::host_disassembler = nullptr;
 
-__attribute__((constructor, used)) static void __init_llvm_mc()
+//初始化最先执行
+__init_module__(opcode)
 {
 #if defined(__ARCH_X86__)
 	LLVMInitializeX86TargetInfo();
@@ -42,13 +45,14 @@ __attribute__((constructor, used)) static void __init_llvm_mc()
 	LLVMInitializeX86AsmPrinter();
 #endif
 	llvmmci::host_architecture_context = new llvmmci::architecture_context();
-	llvmmci::host_att_disassembler = new llvmmci::disassembler(llvmmci::host_architecture_context, llvmmci::assembly_syntax::ASM_SYNTAX_ATT);
+	llvmmci::host_assembler = new llvmmci::assembler(llvmmci::host_architecture_context);
+	llvmmci::host_disassembler = new llvmmci::disassembler(llvmmci::host_architecture_context, llvmmci::assembly_syntax::ASM_SYNTAX_ATT);
 }
 
-//源码缓冲，新建一个汇编单元上下文，不同汇编单元上下文各自独立
-llvmmci::assembler::assembler(architecture_context* as_ctx, bool DoAutoReset, const char* Swift5ReflSegmentName) :
-		as_ctx(as_ctx), src_ctx(new llvm::SourceMgr()), ctx(as_ctx->new_context(src_ctx, DoAutoReset, Swift5ReflSegmentName))
+llvmmci::assembler::assembler(architecture_context* as_ctx) :
+		as_ctx(as_ctx)
 {
+	new_uint();
 }
 
 llvmmci::assembler::~assembler()
@@ -60,6 +64,14 @@ llvmmci::assembler::~assembler()
 void llvmmci::assembler::add_src(const char* src)
 {
 	src_ctx->AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(src), llvm::SMLoc());
+}
+
+void llvmmci::assembler::new_uint()
+{
+	delete ctx;
+	delete src_ctx;
+	src_ctx = new llvm::SourceMgr();
+	ctx = as_ctx->new_context(src_ctx, ignore_err, swift_refl_seg_name);
 }
 
 array* llvmmci::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_syntax syntax)
