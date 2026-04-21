@@ -7,7 +7,7 @@ extern "C"
 {
 struct array
 {
-	size_t length;
+	size_t size;
 	uint8_t data[1]; //数据起始地址，长度为length
 };
 

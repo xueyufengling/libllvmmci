@@ -29,7 +29,7 @@ __attribute__((dllexport)) extern void free_assembler(assembler* assembler);
 
 __attribute__((dllexport)) extern disassembler* create_new_disassembler(architecture_context* as_ctx, unsigned syntax);
 
-__attribute__((dllexport)) extern array* disassemble_text(disassembler* disassembler, const void* text, size_t len);
+__attribute__((dllexport)) extern array* disassemble_text(disassembler* disassembler, const void* text, size_t text_size, uint64_t load_base_addr);
 
 __attribute__((dllexport)) extern array* disassemble_o(disassembler* disassembler, const array* o, size_t data_align);
 
@@ -63,6 +63,14 @@ __attribute__((dllexport)) extern disassembler* host_disassembler;
  * @brief 全局动态链接器
  */
 __attribute__((dllexport)) extern dynamic_linker* global_dynamic_linker;
+
+//指令分析
+__attribute__((dllexport)) extern uint64_t disassembler_find_return(disassembler* disassembler, const void* img_base, size_t max_size, uint64_t load_base_addr, int counter);
+
+__attribute__((dllexport)) extern uint64_t disassembler_find_call(disassembler* disassembler, const void* img_base, size_t max_size, uint64_t load_base_addr, int counter);
+
+__attribute__((dllexport)) extern uint64_t disassembler_find_opcode(disassembler* disassembler, const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter);
+
 }
 
 #endif //_LLVMMCI_MCI

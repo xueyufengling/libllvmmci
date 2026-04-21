@@ -68,12 +68,27 @@ disassembler* create_new_disassembler(architecture_context* as_ctx, unsigned syn
 	return (disassembler*)new llvmmci::disassembler((llvmmci::architecture_context*)as_ctx, (llvmmci::assembly_syntax)syntax);
 }
 
-array* disassemble_text(disassembler* disassembler, const void* text, size_t len)
+array* disassemble_text(disassembler* disassembler, const void* text, size_t text_size, uint64_t load_base_addr)
 {
-	return ((llvmmci::disassembler*)disassembler)->disassemble_text(text, len);
+	return ((llvmmci::disassembler*)disassembler)->disassemble_text(text, text_size, load_base_addr);
 }
 
 array* disassemble_o(disassembler* disassembler, const array* o, size_t data_align)
 {
-	return ((llvmmci::disassembler*)disassembler)->disassemble_o(o->data, o->length, data_align);
+	return ((llvmmci::disassembler*)disassembler)->disassemble_o(o->data, o->size, data_align);
+}
+
+uint64_t disassembler_find_return(disassembler* disassembler, const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
+{
+	return ((llvmmci::disassembler*)disassembler)->find_return(img_base, max_size, load_base_addr, counter);
+}
+
+uint64_t disassembler_find_call(disassembler* disassembler, const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
+{
+	return ((llvmmci::disassembler*)disassembler)->find_call(img_base, max_size, load_base_addr, counter);
+}
+
+uint64_t disassembler_find_opcode(disassembler* disassembler, const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter)
+{
+	return ((llvmmci::disassembler*)disassembler)->find_opcode(img_base, max_size, load_base_addr, opcode, counter);
 }

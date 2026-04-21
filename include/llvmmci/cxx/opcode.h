@@ -3,6 +3,7 @@
 
 #include <llvmmci/struct.h>
 
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -36,9 +37,10 @@ namespace object
 class ObjectFile;
 class SectionRef;
 }
+class MCInst;
 class MCDisassembler;
 class MCInstPrinter;
-
+class MCInstrAnalysis;
 }
 
 namespace llvmmci
@@ -93,12 +95,14 @@ struct architecture_context
 
 	inline llvm::object::ObjectFile* object_file_from(array* o)
 	{
-		return object_file_from(o->data, o->length);
+		return object_file_from(o->data, o->size);
 	}
 
 	llvm::MCDisassembler* new_disassembler(llvm::MCContext* ctx);
 
 	llvm::MCInstPrinter* new_inst_printer(assembly_syntax dialect);
+
+	llvm::MCInstrAnalysis* new_inst_analysis();
 };
 
 extern architecture_context* host_architecture_context;
@@ -185,7 +189,7 @@ struct obj_file
 	llvm::object::ObjectFile* obj;
 
 	inline obj_file(architecture_context* as_ctx, const array* o) :
-			obj_file(as_ctx, o->data, o->length)
+			obj_file(as_ctx, o->data, o->size)
 	{
 	}
 
@@ -220,17 +224,28 @@ struct disassembler
 	llvm::MCContext* ctx; //不同单元的上下文可以复用
 	llvm::MCDisassembler* dis_asm; //可复用
 	llvm::MCInstPrinter* inst_printer; //可复用
+	llvm::MCInstrAnalysis* inst_analysis;
 
 	disassembler(architecture_context* as_ctx, assembly_syntax syntax = assembly_syntax::ASM_SYNTAX_ATT);
 
 	~disassembler();
 
-	array* disassemble_text(const void* text, size_t len);
+	array* disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr);
 
 	array* disassemble_o(const void* o, size_t len, size_t data_align = 16);
 
+	typedef std::function<bool(llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr)> traverse_inst_func;
+
+	bool traverse_inst(const void* img_base, size_t size, uint64_t load_base_addr, traverse_inst_func tr);
+
+	uint64_t find_return(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter = 1);
+
+	uint64_t find_call(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter = 1);
+
+	uint64_t find_opcode(const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter = 1);
+
 protected:
-	bool disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t total_size, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr, uint64_t load_base_addr = 0);
+	bool disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr = 0, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr);
 
 	void dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align);
 

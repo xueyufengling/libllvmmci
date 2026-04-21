@@ -20,7 +20,7 @@ extern std::unique_ptr<llvm::MemoryBuffer> as_membuffer(const void* buf, size_t 
  */
 inline std::unique_ptr<llvm::MemoryBuffer> as_membuffer(array* arr_ptr)
 {
-	return as_membuffer(arr_ptr->data, arr_ptr->length);
+	return as_membuffer(arr_ptr->data, arr_ptr->size);
 }
 
 extern array* array_from_ostream(llvm::raw_svector_ostream& os, size_t offset = 0, size_t extra_len = 0);

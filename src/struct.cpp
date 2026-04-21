@@ -5,7 +5,7 @@
 array* alloc_array(size_t length)
 {
 	array* arr = (array*)malloc(length + sizeof(size_t));
-	arr->length = length;
+	arr->size = length;
 	return arr;
 }
 

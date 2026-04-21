@@ -32,7 +32,7 @@ struct dynamic_lib_target
 
 	inline void add_o(array* o)
 	{
-		add_o(o->data, o->length);
+		add_o(o->data, o->size);
 	}
 
 	/**
@@ -69,7 +69,7 @@ struct dynamic_linker
 
 	inline void add_o(llvm::orc::JITDylib* lib, array* o)
 	{
-		add_o(lib, o->data, o->length);
+		add_o(lib, o->data, o->size);
 	}
 
 	/**

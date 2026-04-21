@@ -22,6 +22,7 @@
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInst.h>
 #include <llvm/MC/MCInstPrinter.h>
+#include <llvm/MC/MCInstrAnalysis.h>
 
 #include <llvmmci/cxx/arch.h>
 #include <llvmmci/cxx/mem.h>
@@ -186,6 +187,11 @@ llvm::MCInstPrinter* llvmmci::architecture_context::new_inst_printer(assembly_sy
 	return target_arch->createMCInstPrinter(*triple, dialect, *asm_info, *inst_info, *reg_info);
 }
 
+llvm::MCInstrAnalysis* llvmmci::architecture_context::new_inst_analysis()
+{
+	return target_arch->createMCInstrAnalysis(inst_info);
+}
+
 llvmmci::obj_file::obj_file(architecture_context* as_ctx, const void* o, size_t len) :
 		obj(as_ctx->object_file_from(o, len))
 {
@@ -248,53 +254,108 @@ void llvmmci::obj_file::parse_sec_addr_symbols(llvm::object::ObjectFile* obj, co
 }
 
 llvmmci::disassembler::disassembler(architecture_context* as_ctx, assembly_syntax syntax) :
-		as_ctx(as_ctx), ctx(as_ctx->new_context(nullptr)), dis_asm(as_ctx->new_disassembler(ctx)), inst_printer(as_ctx->new_inst_printer(syntax))
+		as_ctx(as_ctx), ctx(as_ctx->new_context(nullptr)), dis_asm(as_ctx->new_disassembler(ctx)), inst_printer(as_ctx->new_inst_printer(syntax)), inst_analysis(as_ctx->new_inst_analysis())
 {
 }
 
 llvmmci::disassembler::~disassembler()
 {
+	delete inst_analysis;
 	delete inst_printer;
 	delete dis_asm;
 }
 
-bool llvmmci::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t total_size, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols, uint64_t load_base_addr)
+bool llvmmci::disassembler::traverse_inst(const void* img_base, size_t size, uint64_t load_base_addr, traverse_inst_func tr)
 {
-	size_t offset = 0;	//相对于img_text_base的偏移量，即段内偏移量
-	/**
-	 * offset仅仅是当前img_base中的偏移量，img_base不一定是运行时加载的库的基址，它也能是从文件系统读取so库的内容基地址
-	 * 而load_base_addr是运行时加载目标so库的实际基地址。
-	 * 如果img_base刚好是运行时加载的库指针，那么img_base与load_base_addr就相等。
-	 * 如果img_base是从文件读取的，那么load_base_addr就必须是运行时加载的库指针。
-	 * load_base_addr关系到寻址的计算，即一些汇编指令是位置相关的，必须在指定的地址加载才能正确工作。
-	 */
-	llvm::MCInst inst;	//当前解析的指令
-	while(offset < total_size)
+	if(tr)
 	{
-		uint64_t inst_len;
-		llvm::ArrayRef<uint8_t> inst_buf((uint8_t*)img_text_base + offset, total_size - offset);	//当前未解析的指令缓冲
-		//传入getInstruction()的ArrayRef<>必须第一个字节就是待解析的指令，后面的load_base_addr + offset是用于汇编解析而非指令数据读取的
-		uint64_t inst_addr = load_base_addr + offset;
-		if(dis_asm->getInstruction(inst, inst_len, inst_buf, inst_addr, llvm::nulls()) == llvm::MCDisassembler::Success)	//取未解析的第一条指令
+		size_t offset = 0;	//相对于img_text_base的偏移量，即段内偏移量
+		/**
+		 * offset仅仅是当前img_base中的偏移量，img_base不一定是运行时加载的库的基址，它也能是从文件系统读取so库的内容基地址
+		 * 而load_base_addr是运行时加载目标so库的实际基地址。
+		 * 如果img_base刚好是运行时加载的库指针，那么img_base与load_base_addr就相等。
+		 * 如果img_base是从文件读取的，那么load_base_addr就必须是运行时加载的库指针。
+		 * load_base_addr关系到寻址的计算，即一些汇编指令是位置相关的，必须在指定的地址加载才能正确工作。
+		 */
+		llvm::MCInst inst;	//当前解析的指令
+		while(offset < size)
 		{
-			if(sec_symbols)	//如果有符号信息则先打印符号
+			uint64_t inst_len = 0;
+			llvm::ArrayRef<uint8_t> inst_buf((uint8_t*)img_base + offset, size - offset);	//当前未解析的指令缓冲
+			//传入getInstruction()的ArrayRef<>必须第一个字节就是待解析的指令，后面的load_base_addr + offset是用于汇编解析而非指令数据读取的
+			uint64_t inst_addr = load_base_addr + offset;
+			if(dis_asm->getInstruction(inst, inst_len, inst_buf, inst_addr, llvm::nulls()) == llvm::MCDisassembler::Success)	//取未解析的第一条指令
 			{
-				const llvmmci::obj_symbol& sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
-				if(sym.name)
-				{
-					out << sym.name << ":\n";
-				}
+				if(tr(&inst, inst_len, size, offset, inst_addr))
+					offset += inst_len;
+				else
+					return false;
 			}
-			inst_printer->printInst(&inst, inst_addr, "", *as_ctx->subtarget_info, out);	//打印指令
-			out << '\n';
-			offset += inst_len;
-		}
-		else
-		{
-			return false;	//存在无效指令则直接返回空指针
+			else
+			{
+				if(tr(nullptr, inst_len, size, offset, inst_addr))
+					++offset;	//存在无效指令则直接跳过该字节，直至结尾或下一条有效指令
+				else
+					return false;
+			}
 		}
 	}
 	return true;
+}
+
+//查找到目标指令，停止遍历。如果是无效指令则略过
+#define __disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, end_cond, ...)\
+	{\
+		traverse_inst(img_base, max_size, load_base_addr,\
+		[this, &final_ip, ##__VA_ARGS__](llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr) mutable -> bool\
+		{\
+			if(inst && (end_cond))\
+			{\
+				final_ip = inst_addr;\
+				return false;\
+			}\
+			return true;\
+		});\
+	}
+
+uint64_t llvmmci::disassembler::find_return(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
+{
+	uint64_t final_ip = 0;
+	__disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, inst_analysis->isReturn(*inst) && !--counter, counter)
+	return final_ip;
+}
+
+uint64_t llvmmci::disassembler::find_call(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
+{
+	uint64_t final_ip = 0;
+	__disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, inst_analysis->isCall(*inst) && !--counter, counter)
+	return final_ip;
+}
+
+uint64_t llvmmci::disassembler::find_opcode(const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter)
+{
+	uint64_t final_ip = 0;
+	__disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, inst->getOpcode() == opcode && !--counter, opcode, counter)
+	return final_ip;
+}
+
+bool llvmmci::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols)
+{
+	return traverse_inst(img_text_base, text_size, load_base_addr,
+			[this, &out, sec_symbols](llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr) -> bool
+					{	//如果有符号信息则先打印符号
+						if(sec_symbols)
+						{
+							const llvmmci::obj_symbol& sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
+							if(sym.name)
+							{
+								out << sym.name << ":\n";
+							}
+						}
+						inst_printer->printInst(inst, inst_addr, "", *as_ctx->subtarget_info, out);	//打印指令
+						out << '\n';
+						return inst;
+					});
 }
 
 void llvmmci::disassembler::dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align)
@@ -328,18 +389,18 @@ bool llvmmci::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::
 	if(!contents)
 		return true;
 	llvm::StringRef contents_buf = *contents;
-	//SectionRef.getContents().data()获取到的指针始终是该段的基址
-	return disasm_text(out, contents_buf.data(), contents_buf.size(), sec_symbols, sec.getAddress());
+//SectionRef.getContents().data()获取到的指针始终是该段的基址
+	return disasm_text(out, contents_buf.data(), contents_buf.size(), sec.getAddress(), sec_symbols);
 }
 
-array* llvmmci::disassembler::disassemble_text(const void* text, size_t len)
+array* llvmmci::disassembler::disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr)
 {
 	llvm::SmallString<__OS_PAGE_SIZE__> buf;
 	llvm::raw_svector_ostream asm_out(buf);
-	if(!disasm_text(asm_out, text, len))
+	if(!disasm_text(asm_out, text, text_size, load_base_addr))
 		return nullptr;
 	array* asm_src = llvmmci::array_from_ostream(asm_out, 0, 1);
-	asm_src->data[asm_src->length - 1] = '\0';
+	asm_src->data[asm_src->size - 1] = '\0';
 	return asm_src;
 }
 
@@ -372,6 +433,6 @@ array* llvmmci::disassembler::disassemble_o(const void* o, size_t len, size_t da
 		}
 	}
 	array* asm_src = llvmmci::array_from_ostream(asm_out, 0, 1);
-	asm_src->data[asm_src->length - 1] = '\0';
+	asm_src->data[asm_src->size - 1] = '\0';
 	return asm_src;
 }
