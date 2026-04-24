@@ -17,7 +17,7 @@ struct architecture_context;
 struct assembler;
 struct disassembler;
 
-__attribute__((dllexport)) extern assembler* create_new_assembler(architecture_context* as_ctx, bool DoAutoReset, const char* Swift5ReflSegmentName);
+__attribute__((dllexport)) extern assembler* create_new_assembler(architecture_context* as_ctx);
 
 __attribute__((dllexport)) extern void assembler_add_src(assembler* assembler, const char* src);
 
@@ -52,7 +52,7 @@ __attribute__((dllexport)) extern architecture_context* host_architecture_contex
 /**
  * @brief 宿主机的汇编器
  */
-__attribute__((dllexport)) extern thread_local assembler* host_assembler;
+__attribute__((dllexport)) extern assembler* host_assembler;
 
 /**
  * @brief 宿主机的反汇编器

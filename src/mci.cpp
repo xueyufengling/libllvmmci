@@ -6,7 +6,7 @@
 #include <llvmmci/cxx/init_order.h>
 
 architecture_context* host_architecture_context = nullptr;
-thread_local assembler* host_assembler = nullptr;
+assembler* host_assembler = nullptr;
 disassembler* host_disassembler = nullptr;
 dynamic_linker* global_dynamic_linker = nullptr;
 
