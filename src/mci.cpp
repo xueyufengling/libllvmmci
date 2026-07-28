@@ -3,21 +3,6 @@
 #include <llvmmci/cxx/opcode.h>
 #include <llvmmci/cxx/linker.h>
 
-#include <llvmmci/cxx/init_order.h>
-
-architecture_context* host_architecture_context = nullptr;
-assembler* host_assembler = nullptr;
-disassembler* host_disassembler = nullptr;
-dynamic_linker* global_dynamic_linker = nullptr;
-
-__init_module__(export)
-{
-	host_architecture_context = (architecture_context*)llvmmci::host_architecture_context;
-	host_assembler = (assembler*)llvmmci::host_assembler;
-	host_disassembler = (disassembler*)llvmmci::host_disassembler;
-	global_dynamic_linker = (dynamic_linker*)llvmmci::global_dynamic_linker;
-}
-
 assembler* create_new_assembler(architecture_context* as_ctx)
 {
 	return (assembler*)new llvmmci::assembler((llvmmci::architecture_context*)as_ctx);

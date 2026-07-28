@@ -24,36 +24,26 @@
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/MCInstrAnalysis.h>
 
-#include <llvmmci/cxx/arch.h>
+#include <arch/arch.h>
 #include <llvmmci/cxx/mem.h>
-#include <llvmmci/cxx/init_order.h>
 
-llvmmci::architecture_context* llvmmci::host_architecture_context = nullptr;
-llvmmci::assembler* llvmmci::host_assembler = nullptr;
-llvmmci::disassembler* llvmmci::host_disassembler = nullptr;
-
-//初始化最先执行
-__init_module__(opcode)
+void llvmmci::init_llvm()
 {
-#if defined(__ARCH_X86__)
+#if defined(__arch_x86__)
 	LLVMInitializeX86TargetInfo();
 	LLVMInitializeX86Target();
 	LLVMInitializeX86TargetMC();
-	//汇编
+//汇编
 	LLVMInitializeX86AsmParser();
-	//反汇编
+//反汇编
 	LLVMInitializeX86Disassembler();
 	LLVMInitializeX86AsmPrinter();
 #endif
-	llvmmci::host_architecture_context = new llvmmci::architecture_context();
-	llvmmci::host_assembler = new llvmmci::assembler(llvmmci::host_architecture_context);
-	llvmmci::host_disassembler = new llvmmci::disassembler(llvmmci::host_architecture_context, llvmmci::assembly_syntax::ASM_SYNTAX_ATT);
 }
 
 llvmmci::assembler::assembler(architecture_context* as_ctx) :
 		as_ctx(as_ctx)
 {
-	new_uint();
 }
 
 llvmmci::assembler::~assembler()
@@ -82,7 +72,7 @@ array* llvmmci::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_synt
 	llvm::MCObjectFileInfo* o_info = new llvm::MCObjectFileInfo();
 	o_info->initMCObjectFileInfo(*ctx, PIC, LargeCodeModel); //设置目标.o文件信息
 	ctx->setObjectFileInfo(o_info);
-	llvm::SmallString<__OS_PAGE_SIZE__> o_buf; //栈上分配机器码缓冲
+	llvm::SmallString<__stack_buffer_size__()> o_buf; //栈上分配机器码缓冲
 	llvm::raw_svector_ostream mc_out(o_buf);
 	llvm::MCStreamer* o_streamer = as_ctx->new_object_streamer(ctx, backend, &mc_out, code_emitter);
 	o_streamer->setUseAssemblerInfoForParsing(true); //显示设置使用backend的设置来解析，实际上默认值也是true
@@ -341,21 +331,20 @@ uint64_t llvmmci::disassembler::find_opcode(const void* img_base, size_t max_siz
 
 bool llvmmci::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols)
 {
-	return traverse_inst(img_text_base, text_size, load_base_addr,
-			[this, &out, sec_symbols](llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr) -> bool
-					{	//如果有符号信息则先打印符号
-						if(sec_symbols)
-						{
-							const llvmmci::obj_symbol& sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
-							if(sym.name)
-							{
-								out << sym.name << ":\n";
-							}
-						}
-						inst_printer->printInst(inst, inst_addr, "", *as_ctx->subtarget_info, out);	//打印指令
-						out << '\n';
-						return inst;
-					});
+	return traverse_inst(img_text_base, text_size, load_base_addr, [this, &out, sec_symbols](llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr) -> bool
+			{	//如果有符号信息则先打印符号
+				if (sec_symbols)
+				{
+					const llvmmci::obj_symbol &sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
+					if (sym.name)
+					{
+						out << sym.name << ":\n";
+					}
+				}
+				inst_printer->printInst(inst, inst_addr, "", *as_ctx->subtarget_info, out);	//打印指令
+				out << '\n';
+				return inst;
+			});
 }
 
 void llvmmci::disassembler::dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align)
@@ -395,7 +384,7 @@ bool llvmmci::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::
 
 array* llvmmci::disassembler::disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr)
 {
-	llvm::SmallString<__OS_PAGE_SIZE__> buf;
+	llvm::SmallString<__stack_buffer_size__()> buf;
 	llvm::raw_svector_ostream asm_out(buf);
 	if(!disasm_text(asm_out, text, text_size, load_base_addr))
 		return nullptr;
@@ -413,7 +402,7 @@ array* llvmmci::disassembler::disassemble_o(const void* o, size_t len, size_t da
 	}
 	std::unordered_map<uint64_t, llvmmci::obj_symbol> symbols;
 	obj.parse_sec_addr_symbols(".text", symbols);	//收集所有有地址的符号，用于在对应地址处打印符号名称
-	llvm::SmallString<__OS_PAGE_SIZE__> buf;
+	llvm::SmallString<__stack_buffer_size__()> buf;
 	llvm::raw_svector_ostream asm_out(buf);
 	for(const llvm::object::SectionRef sec : obj.sections())
 	{

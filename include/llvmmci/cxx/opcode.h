@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#define __stack_buffer_size__() 4096
+
 namespace llvm
 {
 class raw_ostream;
@@ -253,6 +255,8 @@ protected:
 };
 
 extern disassembler* host_disassembler;
+
+extern void init_llvm();
 
 }
 

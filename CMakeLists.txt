@@ -9,6 +9,8 @@ project(llvmmci)
 # Set zlib find path. zlib doesn't have Config.cmake so find_package() cannot find it.
 set(CMAKE_PREFIX_PATH "C:/msys64/ucrt64")
 find_package(LLVM REQUIRED)
+find_package(ppmp REQUIRED)
+find_package(arch REQUIRED)
 
 set(PROJECT_SOURCE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
@@ -17,8 +19,9 @@ file(GLOB_RECURSE SOURCES "${SOURCE_DIR}/*.cpp")
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-target_include_directories(${PROJECT_NAME} PUBLIC "${LLVM_INCLUDE_DIRS}")
 target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_INCLUDE_DIRS}")
+target_include_directories(${PROJECT_NAME} PUBLIC "${ppmp_INCLUDE_DIRS}")
+target_include_directories(${PROJECT_NAME} PUBLIC "${arch_INCLUDE_DIRS}")
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC ${LLVM_DEFINITIONS})
 
@@ -35,7 +38,7 @@ set(LLVM_LINK_COMPONENTS
 	# Assembler and Disassembler
 	mc
 	mcparser
-	support 
+	support
 	target)
 
 llvm_map_components_to_libnames(llvm_libs ${LLVM_LINK_COMPONENTS} ${LLVM_BACKENDS_ARCH})
