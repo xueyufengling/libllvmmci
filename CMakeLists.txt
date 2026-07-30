@@ -4,13 +4,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Use C export functions for ABI compability!
-project(llvmmci)
+project(as)
 
 # Set zlib find path. zlib doesn't have Config.cmake so find_package() cannot find it.
 set(CMAKE_PREFIX_PATH "C:/msys64/ucrt64")
 find_package(LLVM REQUIRED)
 find_package(ppmp REQUIRED)
 find_package(arch REQUIRED)
+
+# link_directories() must be called before target is created.
+link_directories("${arch_LIBRARY_DIRS}")
 
 set(PROJECT_SOURCE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
@@ -31,24 +34,24 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC ${LLVM_DEFINITIONS})
 set(LLVM_BACKENDS_ARCH X86)
 
 # Link LLVM and its dependency
+# Assembler and Disassembler
 set(LLVM_LINK_COMPONENTS
-	# Runtime linker
-	orcjit
-	executionengine
-	# Assembler and Disassembler
 	mc
-	mcparser
+	object
 	support
 	target)
 
 llvm_map_components_to_libnames(llvm_libs ${LLVM_LINK_COMPONENTS} ${LLVM_BACKENDS_ARCH})
 
-target_link_libraries(${PROJECT_NAME} ${llvm_libs})
+target_link_libraries(${PROJECT_NAME} ${llvm_libs} "${arch_LIBRARIES}")
+
+message(STATUS "${arch_LIBRARY_DIRS}")
 
 # Install
  
 set(PROJECT_INSTALL_INCLUDE_DIRS "${CMAKE_INSTALL_PREFIX}/include")
-set(PROJECT_INSTALL_LIBRARIES "${CMAKE_INSTALL_PREFIX}/lib")
+set(PROJECT_INSTALL_LIBRARY_DIRS "${CMAKE_INSTALL_PREFIX}/lib")
+set(PROJECT_INSTALL_LIBRARIES ${PROJECT_NAME})
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "lib")
 install(DIRECTORY "${PROJECT_SOURCE_INCLUDE_DIRS}/" DESTINATION "include")

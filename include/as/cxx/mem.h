@@ -1,9 +1,9 @@
-#ifndef _LLVMMCI_MEM
-#define _LLVMMCI_MEM
+#ifndef _AS_MEM
+#define _AS_MEM
 
 #include <memory>
 
-#include <llvmmci/struct.h>
+#include <arch/c_array.h>
 
 namespace llvm
 {
@@ -11,7 +11,7 @@ class MemoryBuffer;
 class raw_svector_ostream;
 }
 
-namespace llvmmci
+namespace as
 {
 extern std::unique_ptr<llvm::MemoryBuffer> as_membuffer(const void* buf, size_t len);
 
@@ -27,4 +27,4 @@ extern array* array_from_ostream(llvm::raw_svector_ostream& os, size_t offset = 
 
 }
 
-#endif //_LLVMMCI_MEM
+#endif //_AS_MEM

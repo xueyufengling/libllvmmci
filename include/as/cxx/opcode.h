@@ -1,7 +1,7 @@
-#ifndef _LLVMMCI_OPCODE
-#define _LLVMMCI_OPCODE
+#ifndef _AS_OPCODE
+#define _AS_OPCODE
 
-#include <llvmmci/struct.h>
+#include <arch/c_array.h>
 
 #include <functional>
 #include <unordered_map>
@@ -45,7 +45,7 @@ class MCInstPrinter;
 class MCInstrAnalysis;
 }
 
-namespace llvmmci
+namespace as
 {
 struct assembler;
 
@@ -247,17 +247,14 @@ struct disassembler
 	uint64_t find_opcode(const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter = 1);
 
 protected:
-	bool disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr = 0, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr);
+	bool disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr = 0, std::unordered_map<uint64_t, as::obj_symbol>* sec_symbols = nullptr);
 
 	void dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align);
 
-	bool disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols = nullptr);
+	bool disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, as::obj_symbol>* sec_symbols = nullptr);
 };
 
 extern disassembler* host_disassembler;
-
-extern void init_llvm();
-
 }
 
-#endif //_LLVMMCI_OPCODE
+#endif //_AS_OPCODE

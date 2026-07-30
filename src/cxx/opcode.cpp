@@ -1,4 +1,4 @@
-#include <llvmmci/cxx/opcode.h>
+#include <as/cxx/opcode.h>
 
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCParser/MCAsmParser.h>
@@ -25,39 +25,25 @@
 #include <llvm/MC/MCInstrAnalysis.h>
 
 #include <arch/arch.h>
-#include <llvmmci/cxx/mem.h>
+#include <as/cxx/mem.h>
 
-void llvmmci::init_llvm()
-{
-#if defined(__arch_x86__)
-	LLVMInitializeX86TargetInfo();
-	LLVMInitializeX86Target();
-	LLVMInitializeX86TargetMC();
-//汇编
-	LLVMInitializeX86AsmParser();
-//反汇编
-	LLVMInitializeX86Disassembler();
-	LLVMInitializeX86AsmPrinter();
-#endif
-}
-
-llvmmci::assembler::assembler(architecture_context* as_ctx) :
+as::assembler::assembler(architecture_context* as_ctx) :
 		as_ctx(as_ctx)
 {
 }
 
-llvmmci::assembler::~assembler()
+as::assembler::~assembler()
 {
 	delete src_ctx;
 	delete ctx;
 }
 
-void llvmmci::assembler::add_src(const char* src)
+void as::assembler::add_src(const char* src)
 {
 	src_ctx->AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(src), llvm::SMLoc());
 }
 
-void llvmmci::assembler::new_uint()
+void as::assembler::new_uint()
 {
 	delete ctx;
 	delete src_ctx;
@@ -65,7 +51,7 @@ void llvmmci::assembler::new_uint()
 	ctx = as_ctx->new_context(src_ctx, ignore_err, swift_refl_seg_name);
 }
 
-array* llvmmci::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_syntax syntax)
+array* as::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_syntax syntax)
 {
 	llvm::MCAsmBackend* backend = as_ctx->new_asm_backend();
 	llvm::MCCodeEmitter* code_emitter = as_ctx->new_code_emitter(ctx);
@@ -86,7 +72,7 @@ array* llvmmci::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_synt
 		llvm::errs() << "run asm parser failed\n";
 		return nullptr;
 	}
-	array* code_buf = llvmmci::array_from_ostream(mc_out);
+	array* code_buf = as::array_from_ostream(mc_out);
 	//释放指针。MCAsmBackend*和MCCodeEmitter*都是智能指针，在delete o_streamer时会自动释放，不能再delete
 	delete target_parser;
 	delete parser;
@@ -94,7 +80,7 @@ array* llvmmci::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_synt
 	return code_buf;
 }
 
-llvmmci::architecture_context::architecture_context(const char* target_arch_triple, const char* target_cpu, const char* feature)
+as::architecture_context::architecture_context(const char* target_arch_triple, const char* target_cpu, const char* feature)
 {
 	triple = new llvm::Triple(llvm::Triple::normalize(target_arch_triple)); //规范triple字符串，包含CPU架构-供应商-操作系统
 	std::string err;
@@ -112,33 +98,33 @@ llvmmci::architecture_context::architecture_context(const char* target_arch_trip
 	subtarget_info = target_arch->createMCSubtargetInfo(triple->getTriple(), target_cpu, feature);
 }
 
-llvmmci::architecture_context::architecture_context() :
+as::architecture_context::architecture_context() :
 		architecture_context(llvm::sys::getDefaultTargetTriple().c_str())
 {
 }
 
-llvm::MCContext* llvmmci::architecture_context::new_context(const llvm::SourceMgr* Mgr, bool DoAutoReset, const char* Swift5ReflSegmentName)
+llvm::MCContext* as::architecture_context::new_context(const llvm::SourceMgr* Mgr, bool DoAutoReset, const char* Swift5ReflSegmentName)
 {
 	return new llvm::MCContext(*triple, asm_info, reg_info, subtarget_info, Mgr, options, DoAutoReset, Swift5ReflSegmentName);
 }
 
-llvm::MCAsmBackend* llvmmci::architecture_context::new_asm_backend()
+llvm::MCAsmBackend* as::architecture_context::new_asm_backend()
 {
 	return target_arch->createMCAsmBackend(*subtarget_info, *reg_info, *options);
 }
 
-llvm::MCCodeEmitter* llvmmci::architecture_context::new_code_emitter(llvm::MCContext* ctx)
+llvm::MCCodeEmitter* as::architecture_context::new_code_emitter(llvm::MCContext* ctx)
 {
 	return target_arch->createMCCodeEmitter(*inst_info, *ctx);
 }
 
-llvm::MCStreamer* llvmmci::architecture_context::new_object_streamer(llvm::MCContext* ctx, llvm::MCAsmBackend* backend, llvm::raw_svector_ostream* o_stream, llvm::MCCodeEmitter* code_emitter)
+llvm::MCStreamer* as::architecture_context::new_object_streamer(llvm::MCContext* ctx, llvm::MCAsmBackend* backend, llvm::raw_svector_ostream* o_stream, llvm::MCCodeEmitter* code_emitter)
 {
 	// 根据triple创建对应类型的.o文件流对象，例如MCELFStreamer，所有平台架构都继承自MCObjectStreamer
 	return target_arch->createMCObjectStreamer(*triple, *ctx, std::unique_ptr<llvm::MCAsmBackend>(backend), backend->createObjectWriter(*o_stream), std::unique_ptr<llvm::MCCodeEmitter>(code_emitter), *subtarget_info);
 }
 
-llvm::MCAsmParser* llvmmci::architecture_context::new_asm_parser(llvm::MCContext* ctx, llvm::SourceMgr* src_ctx, llvm::MCStreamer* o_streamer, unsigned CB)
+llvm::MCAsmParser* as::architecture_context::new_asm_parser(llvm::MCContext* ctx, llvm::SourceMgr* src_ctx, llvm::MCStreamer* o_streamer, unsigned CB)
 {
 	/*
 	 * https://github.com/llvm/llvm-project/blob/llvmorg-22.1.3/llvm/lib/MC/MCParser/AsmParser.cpp#L6308
@@ -149,14 +135,14 @@ llvm::MCAsmParser* llvmmci::architecture_context::new_asm_parser(llvm::MCContext
 	return llvm::createMCAsmParser(*src_ctx, *ctx, *o_streamer, *asm_info, CB);
 }
 
-llvm::MCTargetAsmParser* llvmmci::architecture_context::new_target_asm_parser(llvm::MCAsmParser* parser)
+llvm::MCTargetAsmParser* as::architecture_context::new_target_asm_parser(llvm::MCAsmParser* parser)
 {
 	// https://github.com/llvm/llvm-project/blob/llvmorg-22.1.3/llvm/include/llvm/MC/TargetRegistry.h#L515
 	// 注意此函数与llvm::createMCAsmParser()同名，但实际上不是同一个函数
 	return target_arch->createMCAsmParser(*subtarget_info, *parser, *inst_info, *options);
 }
 
-llvm::object::ObjectFile* llvmmci::architecture_context::object_file_from(const void* o, size_t len)
+llvm::object::ObjectFile* as::architecture_context::object_file_from(const void* o, size_t len)
 {
 	auto obj = llvm::object::ObjectFile::createObjectFile(as_membuffer(o, len)->getMemBufferRef());
 	if(!obj)
@@ -167,32 +153,32 @@ llvm::object::ObjectFile* llvmmci::architecture_context::object_file_from(const 
 	return (*obj).release();	//获取原始指针且防止被unique_ptr<>析构
 }
 
-llvm::MCDisassembler* llvmmci::architecture_context::new_disassembler(llvm::MCContext* ctx)
+llvm::MCDisassembler* as::architecture_context::new_disassembler(llvm::MCContext* ctx)
 {
 	return target_arch->createMCDisassembler(*subtarget_info, *ctx);
 }
 
-llvm::MCInstPrinter* llvmmci::architecture_context::new_inst_printer(assembly_syntax dialect)
+llvm::MCInstPrinter* as::architecture_context::new_inst_printer(assembly_syntax dialect)
 {
 	return target_arch->createMCInstPrinter(*triple, dialect, *asm_info, *inst_info, *reg_info);
 }
 
-llvm::MCInstrAnalysis* llvmmci::architecture_context::new_inst_analysis()
+llvm::MCInstrAnalysis* as::architecture_context::new_inst_analysis()
 {
 	return target_arch->createMCInstrAnalysis(inst_info);
 }
 
-llvmmci::obj_file::obj_file(architecture_context* as_ctx, const void* o, size_t len) :
+as::obj_file::obj_file(architecture_context* as_ctx, const void* o, size_t len) :
 		obj(as_ctx->object_file_from(o, len))
 {
 }
 
-llvmmci::obj_file::~obj_file()
+as::obj_file::~obj_file()
 {
 	delete obj;
 }
 
-std::vector<llvm::object::SectionRef> llvmmci::obj_file::sections()
+std::vector<llvm::object::SectionRef> as::obj_file::sections()
 {
 	std::vector<llvm::object::SectionRef> secs;
 	for(const llvm::object::SectionRef& sec : obj->sections())
@@ -202,7 +188,7 @@ std::vector<llvm::object::SectionRef> llvmmci::obj_file::sections()
 	return secs;
 }
 
-void llvmmci::obj_file::parse_sec_addr_symbols(llvm::object::ObjectFile* obj, const char* sec_name, std::unordered_map<uint64_t, obj_symbol>& sec_symbols)
+void as::obj_file::parse_sec_addr_symbols(llvm::object::ObjectFile* obj, const char* sec_name, std::unordered_map<uint64_t, obj_symbol>& sec_symbols)
 {
 	for(const llvm::object::SymbolRef& sym : obj->symbols())
 	{
@@ -223,12 +209,12 @@ void llvmmci::obj_file::parse_sec_addr_symbols(llvm::object::ObjectFile* obj, co
 				if(!addr)
 					continue;
 				uint64_t sym_addr = *addr;
-				llvmmci::obj_symbol& obj_sym = sec_symbols[sym_addr];
+				as::obj_symbol& obj_sym = sec_symbols[sym_addr];
 				obj_sym.sec = sec_name;
 				obj_sym.sec_offset = sym_addr;
 				auto type = sym.getType();
 				if(type)
-					obj_sym.type = (llvmmci::symbol_type)*type;
+					obj_sym.type = (as::symbol_type)*type;
 				auto name = sym.getName();
 				if(name)
 					obj_sym.name = (*name).data();
@@ -243,19 +229,19 @@ void llvmmci::obj_file::parse_sec_addr_symbols(llvm::object::ObjectFile* obj, co
 	}
 }
 
-llvmmci::disassembler::disassembler(architecture_context* as_ctx, assembly_syntax syntax) :
+as::disassembler::disassembler(architecture_context* as_ctx, assembly_syntax syntax) :
 		as_ctx(as_ctx), ctx(as_ctx->new_context(nullptr)), dis_asm(as_ctx->new_disassembler(ctx)), inst_printer(as_ctx->new_inst_printer(syntax)), inst_analysis(as_ctx->new_inst_analysis())
 {
 }
 
-llvmmci::disassembler::~disassembler()
+as::disassembler::~disassembler()
 {
 	delete inst_analysis;
 	delete inst_printer;
 	delete dis_asm;
 }
 
-bool llvmmci::disassembler::traverse_inst(const void* img_base, size_t size, uint64_t load_base_addr, traverse_inst_func tr)
+bool as::disassembler::traverse_inst(const void* img_base, size_t size, uint64_t load_base_addr, traverse_inst_func tr)
 {
 	if(tr)
 	{
@@ -308,34 +294,34 @@ bool llvmmci::disassembler::traverse_inst(const void* img_base, size_t size, uin
 		});\
 	}
 
-uint64_t llvmmci::disassembler::find_return(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
+uint64_t as::disassembler::find_return(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
 {
 	uint64_t final_ip = 0;
 	__disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, inst_analysis->isReturn(*inst) && !--counter, counter)
 	return final_ip;
 }
 
-uint64_t llvmmci::disassembler::find_call(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
+uint64_t as::disassembler::find_call(const void* img_base, size_t max_size, uint64_t load_base_addr, int counter)
 {
 	uint64_t final_ip = 0;
 	__disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, inst_analysis->isCall(*inst) && !--counter, counter)
 	return final_ip;
 }
 
-uint64_t llvmmci::disassembler::find_opcode(const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter)
+uint64_t as::disassembler::find_opcode(const void* img_base, size_t max_size, uint64_t load_base_addr, unsigned int opcode, int counter)
 {
 	uint64_t final_ip = 0;
 	__disasm_find_offset__(final_ip, img_base, max_size, load_base_addr, inst->getOpcode() == opcode && !--counter, opcode, counter)
 	return final_ip;
 }
 
-bool llvmmci::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols)
+bool as::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_text_base, size_t text_size, uint64_t load_base_addr, std::unordered_map<uint64_t, as::obj_symbol>* sec_symbols)
 {
 	return traverse_inst(img_text_base, text_size, load_base_addr, [this, &out, sec_symbols](llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr) -> bool
 			{	//如果有符号信息则先打印符号
 				if (sec_symbols)
 				{
-					const llvmmci::obj_symbol &sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
+					const as::obj_symbol &sym = sec_symbols->operator[](offset);	//symbols储存的是符号的段内偏移量，因此使用offset索引
 					if (sym.name)
 					{
 						out << sym.name << ":\n";
@@ -347,7 +333,7 @@ bool llvmmci::disassembler::disasm_text(llvm::raw_ostream& out, const void* img_
 			});
 }
 
-void llvmmci::disassembler::dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align)
+void as::disassembler::dump_data_sec_hex(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, size_t data_align)
 {
 	auto contents = sec.getContents();
 	if(!contents)
@@ -372,7 +358,7 @@ void llvmmci::disassembler::dump_data_sec_hex(llvm::raw_ostream& out, const llvm
 	}
 }
 
-bool llvmmci::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, llvmmci::obj_symbol>* sec_symbols)
+bool as::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, as::obj_symbol>* sec_symbols)
 {
 	auto contents = sec.getContents();
 	if(!contents)
@@ -382,25 +368,25 @@ bool llvmmci::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::
 	return disasm_text(out, contents_buf.data(), contents_buf.size(), sec.getAddress(), sec_symbols);
 }
 
-array* llvmmci::disassembler::disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr)
+array* as::disassembler::disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr)
 {
 	llvm::SmallString<__stack_buffer_size__()> buf;
 	llvm::raw_svector_ostream asm_out(buf);
 	if(!disasm_text(asm_out, text, text_size, load_base_addr))
 		return nullptr;
-	array* asm_src = llvmmci::array_from_ostream(asm_out, 0, 1);
+	array* asm_src = as::array_from_ostream(asm_out, 0, 1);
 	asm_src->data[asm_src->size - 1] = '\0';
 	return asm_src;
 }
 
-array* llvmmci::disassembler::disassemble_o(const void* o, size_t len, size_t data_align)
+array* as::disassembler::disassemble_o(const void* o, size_t len, size_t data_align)
 {
-	llvmmci::obj_file obj(as_ctx, o, len);
+	as::obj_file obj(as_ctx, o, len);
 	if(!obj)
 	{
 		return nullptr;
 	}
-	std::unordered_map<uint64_t, llvmmci::obj_symbol> symbols;
+	std::unordered_map<uint64_t, as::obj_symbol> symbols;
 	obj.parse_sec_addr_symbols(".text", symbols);	//收集所有有地址的符号，用于在对应地址处打印符号名称
 	llvm::SmallString<__stack_buffer_size__()> buf;
 	llvm::raw_svector_ostream asm_out(buf);
@@ -421,7 +407,7 @@ array* llvmmci::disassembler::disassemble_o(const void* o, size_t len, size_t da
 			dump_data_sec_hex(asm_out, sec, data_align);
 		}
 	}
-	array* asm_src = llvmmci::array_from_ostream(asm_out, 0, 1);
+	array* asm_src = as::array_from_ostream(asm_out, 0, 1);
 	asm_src->data[asm_src->size - 1] = '\0';
 	return asm_src;
 }

@@ -1,5 +1,5 @@
-#ifndef _LLVMMCI_MCI
-#define _LLVMMCI_MCI
+#ifndef _AS_AS
+#define _AS_AS
 
 /**
  * 本库依赖llvm进行汇编、反汇编、链接、加载，编译时需要在msys2中使用命令 pacman -S mingw-w64-ucrt-x86_64-llvm 以安装llvm
@@ -8,7 +8,7 @@
  */
 
 #include <stdint.h>
-#include <llvmmci/struct.h>
+#include <arch/c_array.h>
 
 // 导出的C接口兼容层
 extern "C"
@@ -73,4 +73,4 @@ __attribute__((dllexport)) extern uint64_t disassembler_find_opcode(disassembler
 
 }
 
-#endif //_LLVMMCI_MCI
+#endif //_AS_AS
