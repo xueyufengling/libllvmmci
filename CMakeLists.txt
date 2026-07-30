@@ -45,8 +45,6 @@ llvm_map_components_to_libnames(llvm_libs ${LLVM_LINK_COMPONENTS} ${LLVM_BACKEND
 
 target_link_libraries(${PROJECT_NAME} ${llvm_libs} "${arch_LIBRARIES}")
 
-message(STATUS "${arch_LIBRARY_DIRS}")
-
 # Install
  
 set(PROJECT_INSTALL_INCLUDE_DIRS "${CMAKE_INSTALL_PREFIX}/include")
