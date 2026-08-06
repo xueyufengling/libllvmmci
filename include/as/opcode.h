@@ -7,7 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
-#define __stack_buffer_size__() 4096
+#include "asm_syntax.h"
+
+// C++11兼容接口
 
 namespace llvm
 {
@@ -49,12 +51,6 @@ namespace as
 {
 struct assembler;
 
-enum assembly_syntax : unsigned
-{
-	ASM_SYNTAX_ATT = 0,
-	ASM_SYNTAX_INTEL = 1,
-};
-
 struct architecture_context
 {
 	const llvm::Triple* triple; //架构三元组信息
@@ -95,7 +91,7 @@ struct architecture_context
 	//反汇编
 	llvm::object::ObjectFile* object_file_from(const void* o, size_t len);
 
-	inline llvm::object::ObjectFile* object_file_from(array* o)
+	inline llvm::object::ObjectFile* object_file_from(c_array* o)
 	{
 		return object_file_from(o->data, o->size);
 	}
@@ -106,8 +102,6 @@ struct architecture_context
 
 	llvm::MCInstrAnalysis* new_inst_analysis();
 };
-
-extern architecture_context* host_architecture_context;
 
 /**
  * @brief 汇编文件单元，该单元内的指令和状态是互相关联的
@@ -134,15 +128,13 @@ struct assembler
 	 * @brief 编译当前汇编单元，编译完成后不清除源码，需要使用clear_uint()手动清除
 	 * @param PIC Position-independent code，即是否生成位置无关代码
 	 */
-	array* assemble(bool PIC = true, bool LargeCodeModel = false, assembly_syntax syntax = assembly_syntax::ASM_SYNTAX_ATT);
+	c_array* assemble(bool PIC = true, bool LargeCodeModel = false, assembly_syntax syntax = assembly_syntax::asm_syntax_att);
 
 	/**
 	 * @brief 清除当前汇编单元并新建汇编单元
 	 */
 	void new_uint();
 };
-
-extern assembler* host_assembler;
 
 enum symbol_flag : unsigned
 {
@@ -190,7 +182,7 @@ struct obj_file
 {
 	llvm::object::ObjectFile* obj;
 
-	inline obj_file(architecture_context* as_ctx, const array* o) :
+	inline obj_file(architecture_context* as_ctx, const c_array* o) :
 			obj_file(as_ctx, o->data, o->size)
 	{
 	}
@@ -228,13 +220,13 @@ struct disassembler
 	llvm::MCInstPrinter* inst_printer; //可复用
 	llvm::MCInstrAnalysis* inst_analysis;
 
-	disassembler(architecture_context* as_ctx, assembly_syntax syntax = assembly_syntax::ASM_SYNTAX_ATT);
+	disassembler(architecture_context* as_ctx, assembly_syntax syntax = assembly_syntax::asm_syntax_att);
 
 	~disassembler();
 
-	array* disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr);
+	c_array* disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr);
 
-	array* disassemble_o(const void* o, size_t len, size_t data_align = 16);
+	c_array* disassemble_o(const void* o, size_t len, size_t data_align = 16);
 
 	typedef std::function<bool(llvm::MCInst* inst, uint64_t inst_len, uint64_t size, uint64_t offset, uint64_t inst_addr)> traverse_inst_func;
 
@@ -253,8 +245,6 @@ protected:
 
 	bool disasm_text_sec(llvm::raw_ostream& out, const llvm::object::SectionRef& sec, std::unordered_map<uint64_t, as::obj_symbol>* sec_symbols = nullptr);
 };
-
-extern disassembler* host_disassembler;
 }
 
 #endif //_AS_OPCODE

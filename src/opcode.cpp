@@ -1,4 +1,4 @@
-#include <as/cxx/opcode.h>
+#include <as/opcode.h>
 
 #include <llvm/MC/MCAsmBackend.h>
 #include <llvm/MC/MCParser/MCAsmParser.h>
@@ -13,19 +13,19 @@
 #include <llvm/MC/MCStreamer.h>
 #include <llvm/MC/MCSubtargetInfo.h>
 #include <llvm/MC/MCTargetOptions.h>
-#include <llvm/Support/SourceMgr.h>
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/Support/Timer.h>
-#include <llvm/TargetParser/Host.h>
-
-#include <llvm/Object/ObjectFile.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInst.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/MCInstrAnalysis.h>
 
-#include <arch/arch.h>
-#include <as/cxx/mem.h>
+#include <llvm/Object/ObjectFile.h>
+
+#include <llvm/Support/SourceMgr.h>
+#include <llvm/Support/Timer.h>
+
+#include <llvm/TargetParser/Host.h>
+
+#include <sys/llvm/mem.h>
 
 as::assembler::assembler(architecture_context* as_ctx) :
 		as_ctx(as_ctx)
@@ -51,14 +51,14 @@ void as::assembler::new_uint()
 	ctx = as_ctx->new_context(src_ctx, ignore_err, swift_refl_seg_name);
 }
 
-array* as::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_syntax syntax)
+c_array* as::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_syntax syntax)
 {
 	llvm::MCAsmBackend* backend = as_ctx->new_asm_backend();
 	llvm::MCCodeEmitter* code_emitter = as_ctx->new_code_emitter(ctx);
 	llvm::MCObjectFileInfo* o_info = new llvm::MCObjectFileInfo();
 	o_info->initMCObjectFileInfo(*ctx, PIC, LargeCodeModel); //设置目标.o文件信息
 	ctx->setObjectFileInfo(o_info);
-	llvm::SmallString<__stack_buffer_size__()> o_buf; //栈上分配机器码缓冲
+	sys::llvm::stack_buffer o_buf; //栈上分配机器码缓冲
 	llvm::raw_svector_ostream mc_out(o_buf);
 	llvm::MCStreamer* o_streamer = as_ctx->new_object_streamer(ctx, backend, &mc_out, code_emitter);
 	o_streamer->setUseAssemblerInfoForParsing(true); //显示设置使用backend的设置来解析，实际上默认值也是true
@@ -72,7 +72,7 @@ array* as::assembler::assemble(bool PIC, bool LargeCodeModel, assembly_syntax sy
 		llvm::errs() << "run asm parser failed\n";
 		return nullptr;
 	}
-	array* code_buf = as::array_from_ostream(mc_out);
+	c_array* code_buf = sys::llvm::array_from_ostream(mc_out);
 	//释放指针。MCAsmBackend*和MCCodeEmitter*都是智能指针，在delete o_streamer时会自动释放，不能再delete
 	delete target_parser;
 	delete parser;
@@ -144,7 +144,7 @@ llvm::MCTargetAsmParser* as::architecture_context::new_target_asm_parser(llvm::M
 
 llvm::object::ObjectFile* as::architecture_context::object_file_from(const void* o, size_t len)
 {
-	auto obj = llvm::object::ObjectFile::createObjectFile(as_membuffer(o, len)->getMemBufferRef());
+	auto obj = llvm::object::ObjectFile::createObjectFile(sys::llvm::as_membuffer(o, len)->getMemBufferRef());
 	if(!obj)
 	{
 		llvm::errs() << "create object file from array failed: " << llvm::toString(obj.takeError()) << "\n";
@@ -368,18 +368,18 @@ bool as::disassembler::disasm_text_sec(llvm::raw_ostream& out, const llvm::objec
 	return disasm_text(out, contents_buf.data(), contents_buf.size(), sec.getAddress(), sec_symbols);
 }
 
-array* as::disassembler::disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr)
+c_array* as::disassembler::disassemble_text(const void* text, size_t text_size, uint64_t load_base_addr)
 {
-	llvm::SmallString<__stack_buffer_size__()> buf;
+	sys::llvm::stack_buffer buf;
 	llvm::raw_svector_ostream asm_out(buf);
 	if(!disasm_text(asm_out, text, text_size, load_base_addr))
 		return nullptr;
-	array* asm_src = as::array_from_ostream(asm_out, 0, 1);
+	c_array* asm_src = sys::llvm::array_from_ostream(asm_out, 0, 1);
 	asm_src->data[asm_src->size - 1] = '\0';
 	return asm_src;
 }
 
-array* as::disassembler::disassemble_o(const void* o, size_t len, size_t data_align)
+c_array* as::disassembler::disassemble_o(const void* o, size_t len, size_t data_align)
 {
 	as::obj_file obj(as_ctx, o, len);
 	if(!obj)
@@ -388,7 +388,7 @@ array* as::disassembler::disassemble_o(const void* o, size_t len, size_t data_al
 	}
 	std::unordered_map<uint64_t, as::obj_symbol> symbols;
 	obj.parse_sec_addr_symbols(".text", symbols);	//收集所有有地址的符号，用于在对应地址处打印符号名称
-	llvm::SmallString<__stack_buffer_size__()> buf;
+	sys::llvm::stack_buffer buf;
 	llvm::raw_svector_ostream asm_out(buf);
 	for(const llvm::object::SectionRef sec : obj.sections())
 	{
@@ -407,7 +407,7 @@ array* as::disassembler::disassemble_o(const void* o, size_t len, size_t data_al
 			dump_data_sec_hex(asm_out, sec, data_align);
 		}
 	}
-	array* asm_src = as::array_from_ostream(asm_out, 0, 1);
+	c_array* asm_src = sys::llvm::array_from_ostream(asm_out, 0, 1);
 	asm_src->data[asm_src->size - 1] = '\0';
 	return asm_src;
 }
